@@ -17,8 +17,6 @@ interface UseAudioJammerReturn {
   recordingDurationMs: number;
 }
 
-const CHUNK_MS = 1500;
-
 export function useAudioJammer({
   delayMs,
   volume,
@@ -29,6 +27,7 @@ export function useAudioJammer({
 
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isActiveRef = useRef(false);
+  const soundsRef = useRef<Audio.Sound[]>([]);
 
   useEffect(() => {
     return () => {
@@ -37,14 +36,31 @@ export function useAudioJammer({
     };
   }, []);
 
+  const cleanupSounds = async () => {
+    for (const s of soundsRef.current) {
+      try { await s.unloadAsync(); } catch {}
+    }
+    soundsRef.current = [];
+  };
+
+  // Optimized loop with FULL speaker volume:
+  // 1. Record in playAndRecord mode
+  // 2. Stop recording, pre-load the sound (still in record mode — fast)
+  // 3. Switch to playback-only mode (routes to LOUD main speaker)
+  // 4. Play immediately (sound already loaded — near-instant)
+  // 5. While playing, we can't record — but playback is LOUD
+  // 6. When done, switch back to record mode for next chunk
+  // Gap between chunks: ~100-150ms (mode switch overhead only)
   const loop = async () => {
+    const chunkMs = Math.max(delayMs, 500);
+
     while (isActiveRef.current) {
       let recording: Audio.Recording | undefined;
       let sound: Audio.Sound | undefined;
 
       try {
-        // 1. Enable recording mode
-        console.log('[DJ] Setting audio mode for recording...');
+        // === RECORD PHASE ===
+        setState('listening');
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
@@ -53,35 +69,32 @@ export function useAudioJammer({
           playThroughEarpieceAndroid: false,
         });
 
-        // 2. Record a chunk
-        console.log('[DJ] Starting recording...');
         const result = await Audio.Recording.createAsync(
           Audio.RecordingOptionsPresets.HIGH_QUALITY
         );
         recording = result.recording;
-
-        if (!isActiveRef.current) break;
-        setState('listening');
-
-        await new Promise((r) => setTimeout(r, CHUNK_MS));
         if (!isActiveRef.current) break;
 
-        // 3. Stop recording, get URI
-        console.log('[DJ] Stopping recording...');
+        await new Promise((r) => setTimeout(r, chunkMs));
+        if (!isActiveRef.current) break;
+
+        // Stop recording + get URI
         await recording.stopAndUnloadAsync();
         const uri = recording.getURI();
         recording = undefined;
-        console.log('[DJ] Recorded URI:', uri);
-
         if (!uri || !isActiveRef.current) break;
 
-        // 4. Wait for delay offset
-        console.log(`[DJ] Waiting ${delayMs}ms delay...`);
-        await new Promise((r) => setTimeout(r, delayMs));
-        if (!isActiveRef.current) break;
+        // Pre-load sound while still in record mode (fast — no playback yet)
+        const { sound: s } = await Audio.Sound.createAsync(
+          { uri },
+          { volume: 1.0, shouldPlay: false }
+        );
+        sound = s;
+        soundsRef.current.push(sound);
 
-        // 5. Switch to playback mode (speaker, not earpiece)
-        console.log('[DJ] Switching to playback mode...');
+        // === PLAYBACK PHASE ===
+        setState('jamming');
+        // Switch to playback-only: routes audio to MAIN SPEAKER (loud!)
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
@@ -90,51 +103,41 @@ export function useAudioJammer({
           playThroughEarpieceAndroid: false,
         });
 
-        // 6. Play it back
-        console.log('[DJ] Playing back...');
-        setState('jamming');
-        const { sound: s } = await Audio.Sound.createAsync(
-          { uri },
-          { volume, shouldPlay: true }
-        );
-        sound = s;
+        // Play immediately — sound is pre-loaded so this is near-instant
+        await sound.playAsync();
 
-        // 7. Wait for playback to finish (with timeout fallback)
+        // Wait for playback to finish
         await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => {
-            console.log('[DJ] Playback timeout - moving on');
-            resolve();
-          }, CHUNK_MS + 2000);
-
+          const timeout = setTimeout(() => resolve(), chunkMs + 1000);
           sound!.setOnPlaybackStatusUpdate((status) => {
             if (status.isLoaded && status.didJustFinish) {
-              console.log('[DJ] Playback finished');
               clearTimeout(timeout);
               resolve();
             }
           });
         });
 
-        // 8. Cleanup sound
+        // Cleanup this sound
         await sound.unloadAsync();
+        soundsRef.current = soundsRef.current.filter((x) => x !== sound);
         sound = undefined;
-        console.log('[DJ] Chunk cycle complete, looping...');
+
+        // Loop continues immediately to next record cycle
 
       } catch (err) {
-        console.error('[DJ] Error in loop:', err);
-        setError(String(err));
-        // Cleanup on error
+        console.error('[DJ] Error:', err);
         if (recording) {
           try { await recording.stopAndUnloadAsync(); } catch {}
         }
         if (sound) {
           try { await sound.unloadAsync(); } catch {}
+          soundsRef.current = soundsRef.current.filter((x) => x !== sound);
         }
-        // Brief pause before retrying
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
+    await cleanupSounds();
     console.log('[DJ] Loop exited');
   };
 
@@ -147,14 +150,12 @@ export function useAudioJammer({
       return;
     }
 
-    console.log('[DJ] Requesting permissions...');
     const { status } = await Audio.requestPermissionsAsync();
     if (status !== 'granted') {
       setError('Microphone permission is required');
       setState('error');
       return;
     }
-    console.log('[DJ] Permission granted');
 
     isActiveRef.current = true;
     setState('listening');
@@ -169,12 +170,12 @@ export function useAudioJammer({
   }, [delayMs, volume]);
 
   const stopListening = useCallback(async () => {
-    console.log('[DJ] Stopping...');
     isActiveRef.current = false;
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
+    await cleanupSounds();
     setState('idle');
     setRecordingDurationMs(0);
   }, []);
