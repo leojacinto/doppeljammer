@@ -36,8 +36,8 @@ The core goal of Doppeljammer is to capture nearby music via the phone's mic and
 
 | Mode | Routes to speaker? | Audio output? | Feedback? |
 |------|-------------------|---------------|-----------|
-| `default` + `defaultToSpeaker` | ✅ Yes | ✅ Loud | ❌ Squeal at any gain (0.15–1.0) |
 | `spokenAudio` + `defaultToSpeaker` | ✅ Yes | ✅ Yes | ⚠️ Squeal present but music audible underneath **← current config** |
+| `default` + `defaultToSpeaker` | ✅ Yes | ✅ Loud | ❌ Squeal at any gain (0.15–1.0) |
 | `voiceChat` + `defaultToSpeaker` | ❌ Forces earpiece | Faint | N/A |
 | `voiceChat` + 1500ms delay | ❌ Forces earpiece | Faint | N/A |
 | `videoChat` + `defaultToSpeaker` | ❌ Forces earpiece | Faint | N/A |
