@@ -5,7 +5,7 @@ import { useRealtimeDAF } from '@/hooks/useRealtimeDAF';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [delayMs] = useState(300);
+  const [delayMs] = useState(500);
   const [volume] = useState(1.0);
 
   const { state, error, startListening, stopListening, recordingDurationMs } =

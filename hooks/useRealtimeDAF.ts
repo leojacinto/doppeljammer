@@ -83,6 +83,11 @@ export function useRealtimeDAF({
   }, []);
 
   const startListening = useCallback(async () => {
+    if (ctxRef.current) {
+      console.log('[DAF] Already running, ignoring start');
+      return;
+    }
+
     setError(null);
 
     if (Platform.OS === 'web') {
@@ -93,7 +98,9 @@ export function useRealtimeDAF({
 
     try {
       // 1. Request mic permission
+      console.log('[DAF] Requesting permissions...');
       const permStatus = await AudioManager.requestRecordingPermissions();
+      console.log('[DAF] Permission:', permStatus);
       if (permStatus !== 'Granted') {
         setError('Microphone permission is required');
         setState('error');
@@ -101,43 +108,55 @@ export function useRealtimeDAF({
       }
 
       // 2. Configure audio session: playAndRecord with speaker output
+      console.log('[DAF] Setting audio session...');
       AudioManager.setAudioSessionOptions({
         iosCategory: 'playAndRecord',
         iosMode: 'default',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothA2DP'],
+        iosOptions: [],
       });
+      await AudioManager.setAudioSessionActivity(true);
 
-      // 3. Create audio context
+      // 3. Create and resume audio context first
+      console.log('[DAF] Creating AudioContext...');
       const ctx = new AudioContext();
       ctxRef.current = ctx;
+      const resumed = await ctx.resume();
+      console.log('[DAF] Context resumed:', resumed, 'state:', ctx.state);
 
       // 4. Create the audio graph nodes
+      console.log('[DAF] Creating nodes...');
       const adapter = ctx.createRecorderAdapter();
       adapterRef.current = adapter;
 
-      // DelayNode: maxDelayTime in seconds (up to 5s for flexibility)
       const delay = ctx.createDelay(5.0);
       delay.delayTime.value = initialDelayMs / 1000;
       delayNodeRef.current = delay;
+      console.log('[DAF] Delay set to', initialDelayMs, 'ms');
 
       const gain = ctx.createGain();
-      gain.gain.value = initialVolume;
+      // Gain must be low enough that feedback loop decays:
+      // Each cycle: mic picks up ~X of speaker output, multiplied by gain.
+      // At 0.15, even if mic picks up 100% of output, signal halves each cycle.
+      gain.gain.value = 1.0;
       gainNodeRef.current = gain;
+      console.log('[DAF] Gain set to 1.0 (earpiece)');
 
-      // 5. Connect the graph: adapter → delay → gain → speaker
+      // 5. Connect: adapter → delay → gain → speaker
       adapter.connect(delay);
       delay.connect(gain);
       gain.connect(ctx.destination);
+      console.log('[DAF] Graph connected: adapter → delay → gain → destination');
 
       // 6. Create recorder and connect to adapter
       const recorder = new AudioRecorder();
       recorderRef.current = recorder;
       recorder.connect(adapter);
+      console.log('[DAF] Recorder connected to adapter');
 
       // 7. Start recording (mic input flows through the graph in real-time)
-      recorder.start();
-
-      await ctx.resume();
+      const startResult = recorder.start();
+      console.log('[DAF] Recorder started:', JSON.stringify(startResult));
+      console.log('[DAF] Recorder isRecording:', recorder.isRecording());
 
       setState('jamming');
       setRecordingDurationMs(0);
@@ -147,7 +166,7 @@ export function useRealtimeDAF({
         setRecordingDurationMs(Date.now() - startTime);
       }, 100);
 
-      console.log('[DAF] Real-time pipeline started:', initialDelayMs, 'ms delay');
+      console.log('[DAF] Pipeline running!');
 
     } catch (err) {
       console.error('[DAF] Start error:', err);
