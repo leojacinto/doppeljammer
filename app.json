@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Doppeljammer",
+    "slug": "doppeljammer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "doppeljammer",
+    "splash": {
+      "backgroundColor": "#0a0a0a",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.doppeljammer.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Doppeljammer needs microphone access to listen to and identify music being played nearby.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      },
+      "package": "com.doppeljammer.app",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Doppeljammer needs microphone access to listen to and identify music being played nearby."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}
