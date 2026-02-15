@@ -33,12 +33,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Doppeljammer needs microphone access to listen to and identify music being played nearby."
-        }
-      ],
       "expo-asset",
       "expo-font",
       "react-native-audio-api"

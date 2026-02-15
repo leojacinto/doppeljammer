@@ -26,6 +26,13 @@ interface UseRealtimeDAFReturn {
   setVolume: (vol: number) => void;
 }
 
+// Real-time DAF using native audio graph:
+// AudioRecorder → RecorderAdapterNode → DelayNode → GainNode → destination
+//
+// Output defaults to earpiece (no feedback). If a Bluetooth speaker is
+// connected it routes there automatically via allowBluetoothA2DP.
+// See README "Known Constraint: Speaker Feedback" for why the built-in
+// speaker cannot be used.
 export function useRealtimeDAF({
   delayMs: initialDelayMs,
   volume: initialVolume,
@@ -42,9 +49,7 @@ export function useRealtimeDAF({
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    return () => {
-      cleanup();
-    };
+    return () => { cleanup(); };
   }, []);
 
   const cleanup = async () => {
@@ -68,14 +73,12 @@ export function useRealtimeDAF({
     gainNodeRef.current = null;
   };
 
-  // Live-update delay without restarting the pipeline
   const setDelay = useCallback((ms: number) => {
     if (delayNodeRef.current) {
       delayNodeRef.current.delayTime.value = ms / 1000;
     }
   }, []);
 
-  // Live-update volume without restarting the pipeline
   const setVolume = useCallback((vol: number) => {
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = vol;
@@ -83,11 +86,7 @@ export function useRealtimeDAF({
   }, []);
 
   const startListening = useCallback(async () => {
-    if (ctxRef.current) {
-      console.log('[DAF] Already running, ignoring start');
-      return;
-    }
-
+    if (ctxRef.current) return;
     setError(null);
 
     if (Platform.OS === 'web') {
@@ -97,70 +96,44 @@ export function useRealtimeDAF({
     }
 
     try {
-      // 1. Request mic permission
-      console.log('[DAF] Requesting permissions...');
       const permStatus = await AudioManager.requestRecordingPermissions();
-      console.log('[DAF] Permission:', permStatus);
       if (permStatus !== 'Granted') {
         setError('Microphone permission is required');
         setState('error');
         return;
       }
 
-      // 2. Configure audio session: playAndRecord with speaker output
-      console.log('[DAF] Setting audio session...');
+      // Earpiece output by default; Bluetooth speaker if connected
       AudioManager.setAudioSessionOptions({
         iosCategory: 'playAndRecord',
-        iosMode: 'voiceChat',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothA2DP'],
+        iosMode: 'default',
+        iosOptions: ['allowBluetoothA2DP'],
       });
       await AudioManager.setAudioSessionActivity(true);
 
-      // 3. Create and resume audio context first
-      console.log('[DAF] Creating AudioContext...');
       const ctx = new AudioContext();
       ctxRef.current = ctx;
-      const resumed = await ctx.resume();
-      console.log('[DAF] Context resumed:', resumed, 'state:', ctx.state);
+      await ctx.resume();
 
-      // 4. Create the audio graph nodes
-      console.log('[DAF] Creating nodes...');
       const adapter = ctx.createRecorderAdapter();
       adapterRef.current = adapter;
 
       const delay = ctx.createDelay(5.0);
       delay.delayTime.value = initialDelayMs / 1000;
       delayNodeRef.current = delay;
-      console.log('[DAF] Delay set to', initialDelayMs, 'ms');
-
-      // High-pass filter at 300Hz to cut low frequencies that cause feedback
-      const hpFilter = ctx.createBiquadFilter();
-      hpFilter.type = 'highpass';
-      hpFilter.frequency.value = 300;
-      hpFilter.Q.value = 0.7;
 
       const gain = ctx.createGain();
-      gain.gain.value = 0.5;
+      gain.gain.value = initialVolume;
       gainNodeRef.current = gain;
-      console.log('[DAF] Gain 0.5, HP filter 300Hz, speaker mode');
 
-      // 5. Connect: adapter → delay → highpass → gain → speaker
       adapter.connect(delay);
-      delay.connect(hpFilter);
-      hpFilter.connect(gain);
+      delay.connect(gain);
       gain.connect(ctx.destination);
-      console.log('[DAF] Graph: adapter → delay → HP → gain → destination');
 
-      // 6. Create recorder and connect to adapter
       const recorder = new AudioRecorder();
       recorderRef.current = recorder;
       recorder.connect(adapter);
-      console.log('[DAF] Recorder connected to adapter');
-
-      // 7. Start recording (mic input flows through the graph in real-time)
-      const startResult = recorder.start();
-      console.log('[DAF] Recorder started:', JSON.stringify(startResult));
-      console.log('[DAF] Recorder isRecording:', recorder.isRecording());
+      recorder.start();
 
       setState('jamming');
       setRecordingDurationMs(0);
@@ -169,19 +142,6 @@ export function useRealtimeDAF({
       durationIntervalRef.current = setInterval(() => {
         setRecordingDurationMs(Date.now() - startTime);
       }, 100);
-
-      // List available input devices so we can try selecting a different mic
-      try {
-        const devices = await AudioManager.getDevicesInfo();
-        console.log('[DAF] Available inputs:', JSON.stringify(devices.availableInputs));
-        console.log('[DAF] Current inputs:', JSON.stringify(devices.currentInputs));
-        console.log('[DAF] Available outputs:', JSON.stringify(devices.availableOutputs));
-        console.log('[DAF] Current outputs:', JSON.stringify(devices.currentOutputs));
-      } catch (e) {
-        console.log('[DAF] Could not get device info:', e);
-      }
-
-      console.log('[DAF] Pipeline running!');
 
     } catch (err) {
       console.error('[DAF] Start error:', err);
@@ -195,7 +155,6 @@ export function useRealtimeDAF({
     await cleanup();
     setState('idle');
     setRecordingDurationMs(0);
-    console.log('[DAF] Pipeline stopped');
   }, []);
 
   return {
