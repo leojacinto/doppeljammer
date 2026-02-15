@@ -111,8 +111,8 @@ export function useRealtimeDAF({
       console.log('[DAF] Setting audio session...');
       AudioManager.setAudioSessionOptions({
         iosCategory: 'playAndRecord',
-        iosMode: 'default',
-        iosOptions: [],
+        iosMode: 'voiceChat',
+        iosOptions: ['defaultToSpeaker', 'allowBluetoothA2DP'],
       });
       await AudioManager.setAudioSessionActivity(true);
 
@@ -133,19 +133,23 @@ export function useRealtimeDAF({
       delayNodeRef.current = delay;
       console.log('[DAF] Delay set to', initialDelayMs, 'ms');
 
-      const gain = ctx.createGain();
-      // Gain must be low enough that feedback loop decays:
-      // Each cycle: mic picks up ~X of speaker output, multiplied by gain.
-      // At 0.15, even if mic picks up 100% of output, signal halves each cycle.
-      gain.gain.value = 1.0;
-      gainNodeRef.current = gain;
-      console.log('[DAF] Gain set to 1.0 (earpiece)');
+      // High-pass filter at 300Hz to cut low frequencies that cause feedback
+      const hpFilter = ctx.createBiquadFilter();
+      hpFilter.type = 'highpass';
+      hpFilter.frequency.value = 300;
+      hpFilter.Q.value = 0.7;
 
-      // 5. Connect: adapter → delay → gain → speaker
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      gainNodeRef.current = gain;
+      console.log('[DAF] Gain 0.5, HP filter 300Hz, speaker mode');
+
+      // 5. Connect: adapter → delay → highpass → gain → speaker
       adapter.connect(delay);
-      delay.connect(gain);
+      delay.connect(hpFilter);
+      hpFilter.connect(gain);
       gain.connect(ctx.destination);
-      console.log('[DAF] Graph connected: adapter → delay → gain → destination');
+      console.log('[DAF] Graph: adapter → delay → HP → gain → destination');
 
       // 6. Create recorder and connect to adapter
       const recorder = new AudioRecorder();
@@ -165,6 +169,17 @@ export function useRealtimeDAF({
       durationIntervalRef.current = setInterval(() => {
         setRecordingDurationMs(Date.now() - startTime);
       }, 100);
+
+      // List available input devices so we can try selecting a different mic
+      try {
+        const devices = await AudioManager.getDevicesInfo();
+        console.log('[DAF] Available inputs:', JSON.stringify(devices.availableInputs));
+        console.log('[DAF] Current inputs:', JSON.stringify(devices.currentInputs));
+        console.log('[DAF] Available outputs:', JSON.stringify(devices.availableOutputs));
+        console.log('[DAF] Current outputs:', JSON.stringify(devices.currentOutputs));
+      } catch (e) {
+        console.log('[DAF] Could not get device info:', e);
+      }
 
       console.log('[DAF] Pipeline running!');
 

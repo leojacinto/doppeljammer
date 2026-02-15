@@ -12,19 +12,47 @@ Based on the Delayed Auditory Feedback (DAF) phenomenon studied since the 1950s.
 
 ## Tech Stack
 
-- **Expo** (React Native) — iOS + Android from a single codebase
-- **expo-av** — Audio recording and playback
-- **expo-haptics** — Tactile feedback
+- **Expo SDK 54** (React Native 0.81) — iOS + Android from a single codebase
+- **react-native-audio-api** — Native real-time audio engine (Web Audio API spec)
+- **expo-dev-client** — Custom dev build (required for native audio module)
 - **expo-router** — File-based navigation
 
 ## Getting Started
 
 ```bash
 npm install
-npx expo start
+npx expo prebuild --platform ios
+cd ios && pod install && cd ..
+npx expo run:ios --device
 ```
 
-Scan the QR code with Expo Go on your phone, or press `i` for iOS simulator / `a` for Android emulator.
+Requires Xcode and a physical iOS device (no Expo Go — native module needs a custom build).
+
+## Known Constraint: Speaker Feedback
+
+The core goal of Doppeljammer is to capture nearby music via the phone's mic and play it back through the speaker with a delay. On a single iPhone, this creates an unavoidable **acoustic feedback loop** — the speaker output feeds back into the mic, which gets delayed and played again, building to a high-pitched squeal.
+
+### What was tried
+
+| Approach | Result |
+|----------|--------|
+| `default` mode + main speaker | Loud output, but feedback builds to squeal at any gain level (tested 0.15–1.0) |
+| `voiceChat` mode + speaker | iOS forces earpiece routing — AEC requires it. No loud output possible |
+| `voiceChat` mode + 1500ms delay | Same — still forces earpiece regardless of delay length |
+| `measurement` mode + speaker | No audio output at all |
+| High-pass filter (300Hz) on output | Feedback still builds up |
+| Gain reduction (down to 0.15) | Feedback still builds up — iOS AGC boosts mic input, compensating |
+| Alternate mic selection | Only one mic exposed by iOS (`Built-In Microphone`) |
+| `default` mode + earpiece | **Works perfectly** — no feedback, continuous real-time DAF. But too quiet to be effective. |
+
+### Root cause
+
+The iPhone's speaker and mic are physically close together on the same device. iOS Automatic Gain Control amplifies the mic signal, ensuring the feedback loop gain stays above 1.0 regardless of software gain settings. Apple's echo cancellation (`voiceChat` mode) solves feedback but forces earpiece routing, defeating the purpose.
+
+### What works
+
+- **Earpiece output** — real-time DAF with zero feedback, but only audible to the user
+- **Bluetooth speaker** — mic on phone, output on separate device. No feedback, full volume. Ideal but requires carrying a speaker.
 
 ## Credits & Prior Art
 
