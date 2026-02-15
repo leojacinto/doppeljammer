@@ -1,8 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAudioJammer } from '@/hooks/useAudioJammer';
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [delayMs] = useState(300);
   const [volume] = useState(1.0);
 
@@ -32,8 +34,13 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>DOPPEL</Text>
-        <Text style={styles.titleAccent}>JAMMER</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>DOPPEL</Text>
+          <Text style={styles.titleAccent}>JAMMER</Text>
+        </View>
+        <Pressable onPress={() => router.push('/settings')} style={styles.settingsBtn}>
+          <Text style={styles.settingsText}>Credits</Text>
+        </Pressable>
       </View>
 
       <View style={styles.content}>
@@ -71,8 +78,25 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 16,
+  },
+  titleRow: {
+    flexDirection: 'row',
+  },
+  settingsBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  settingsText: {
+    fontSize: 13,
+    color: '#8e8e93',
+    fontWeight: '600',
   },
   title: {
     fontSize: 28,
