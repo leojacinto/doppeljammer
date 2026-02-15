@@ -32,27 +32,43 @@ Requires Xcode and a physical iOS device (no Expo Go — native module needs a c
 
 The core goal of Doppeljammer is to capture nearby music via the phone's mic and play it back through the speaker with a delay. On a single iPhone, this creates an unavoidable **acoustic feedback loop** — the speaker output feeds back into the mic, which gets delayed and played again, building to a high-pitched squeal.
 
-### What was tried
+### iOS audio modes tested
+
+| Mode | Routes to speaker? | Audio output? | Feedback? |
+|------|-------------------|---------------|-----------|
+| `default` + `defaultToSpeaker` | ✅ Yes | ✅ Loud | ❌ Squeal at any gain (0.15–1.0) |
+| `spokenAudio` + `defaultToSpeaker` | ✅ Yes | ✅ Yes | ⚠️ Squeal present but music audible underneath **← current config** |
+| `voiceChat` + `defaultToSpeaker` | ❌ Forces earpiece | Faint | N/A |
+| `voiceChat` + 1500ms delay | ❌ Forces earpiece | Faint | N/A |
+| `videoChat` + `defaultToSpeaker` | ❌ Forces earpiece | Faint | N/A |
+| `measurement` + `defaultToSpeaker` | ❌ Forces earpiece | Faint/none | N/A |
+| `default` + earpiece (no `defaultToSpeaker`) | ❌ Earpiece | ✅ Perfect | ✅ None — but too quiet |
+
+### Other approaches tried
 
 | Approach | Result |
 |----------|--------|
-| `default` mode + main speaker | Loud output, but feedback builds to squeal at any gain level (tested 0.15–1.0) |
-| `voiceChat` mode + speaker | iOS forces earpiece routing — AEC requires it. No loud output possible |
-| `voiceChat` mode + 1500ms delay | Same — still forces earpiece regardless of delay length |
-| `measurement` mode + speaker | No audio output at all |
-| High-pass filter (300Hz) on output | Feedback still builds up |
-| Gain reduction (down to 0.15) | Feedback still builds up — iOS AGC boosts mic input, compensating |
+| High-pass filter (300Hz) | Feedback still builds up |
+| 4th-order band-pass (300–2500Hz) | Reduces squeal frequency range but doesn't eliminate it |
+| Gain reduction (down to 0.15) | Feedback still builds — iOS AGC boosts mic input |
 | Alternate mic selection | Only one mic exposed by iOS (`Built-In Microphone`) |
-| `default` mode + earpiece | **Works perfectly** — no feedback, continuous real-time DAF. But too quiet to be effective. **← current config** |
+| WorkletProcessingNode (adaptive gain/limiter) | Crashes — `react-native-worklets` 0.7.x incompatible with current Expo/RN JS runtime |
 
 ### Root cause
 
-The iPhone's speaker and mic are physically close together on the same device. iOS Automatic Gain Control amplifies the mic signal, ensuring the feedback loop gain stays above 1.0 regardless of software gain settings. Apple's echo cancellation (`voiceChat` mode) solves feedback but forces earpiece routing, defeating the purpose.
+The iPhone's speaker and mic are physically close together. iOS AGC amplifies the mic signal, keeping the feedback loop gain above 1.0 regardless of software gain settings. All iOS modes with echo cancellation (`voiceChat`, `videoChat`) force earpiece routing, defeating the purpose.
 
 ### What works
 
 - **Earpiece output** — real-time DAF with zero feedback, but only audible to the user
-- **Bluetooth speaker** — mic on phone, output on separate device. No feedback, full volume. Ideal but requires carrying a speaker.
+- **`spokenAudio` mode + speaker** — music comes through but squeal is still present. Best speaker result so far.
+- **Bluetooth speaker** — mic on phone, output on separate device. No feedback, full volume.
+
+### Still to explore
+
+- `gameChat` and `moviePlayback` iOS audio modes (untested)
+- Custom native iOS module for echo cancellation (bypasses JS worklet crash)
+- Real-world test with loud external music (feedback may be less dominant when sodcaster's music overwhelms the mic)
 
 ## Credits & Prior Art
 
