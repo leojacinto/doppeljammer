@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAudioJammer } from '@/hooks/useAudioJammer';
+import { useRealtimeDAF } from '@/hooks/useRealtimeDAF';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -9,7 +9,7 @@ export default function HomeScreen() {
   const [volume] = useState(1.0);
 
   const { state, error, startListening, stopListening, recordingDurationMs } =
-    useAudioJammer({ delayMs, volume });
+    useRealtimeDAF({ delayMs, volume });
 
   const isActive = state === 'listening' || state === 'jamming';
 
