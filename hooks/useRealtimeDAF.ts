@@ -103,11 +103,10 @@ export function useRealtimeDAF({
         return;
       }
 
-      // Earpiece output by default; Bluetooth speaker if connected
       AudioManager.setAudioSessionOptions({
         iosCategory: 'playAndRecord',
-        iosMode: 'default',
-        iosOptions: ['allowBluetoothA2DP'],
+        iosMode: 'spokenAudio',
+        iosOptions: ['defaultToSpeaker', 'allowBluetoothA2DP'],
       });
       await AudioManager.setAudioSessionActivity(true);
 
@@ -118,15 +117,43 @@ export function useRealtimeDAF({
       const adapter = ctx.createRecorderAdapter();
       adapterRef.current = adapter;
 
+      // Aggressive band-pass + notch filters to reduce feedback
+      const hpFilter = ctx.createBiquadFilter();
+      hpFilter.type = 'highpass';
+      hpFilter.frequency.value = 300;
+      hpFilter.Q.value = 1.0;
+
+      const lpFilter = ctx.createBiquadFilter();
+      lpFilter.type = 'lowpass';
+      lpFilter.frequency.value = 2500;
+      lpFilter.Q.value = 1.0;
+
+      // Second-order HP to steepen the rolloff
+      const hp2 = ctx.createBiquadFilter();
+      hp2.type = 'highpass';
+      hp2.frequency.value = 300;
+      hp2.Q.value = 1.0;
+
+      // Second-order LP to steepen the rolloff
+      const lp2 = ctx.createBiquadFilter();
+      lp2.type = 'lowpass';
+      lp2.frequency.value = 2500;
+      lp2.Q.value = 1.0;
+
       const delay = ctx.createDelay(5.0);
       delay.delayTime.value = initialDelayMs / 1000;
       delayNodeRef.current = delay;
 
       const gain = ctx.createGain();
-      gain.gain.value = initialVolume;
+      gain.gain.value = 0.15;
       gainNodeRef.current = gain;
 
-      adapter.connect(delay);
+      // adapter → HP → HP2 → LP → LP2 → delay → gain → speaker
+      adapter.connect(hpFilter);
+      hpFilter.connect(hp2);
+      hp2.connect(lpFilter);
+      lpFilter.connect(lp2);
+      lp2.connect(delay);
       delay.connect(gain);
       gain.connect(ctx.destination);
 
