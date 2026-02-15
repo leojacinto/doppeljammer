@@ -43,7 +43,7 @@ The core goal of Doppeljammer is to capture nearby music via the phone's mic and
 | High-pass filter (300Hz) on output | Feedback still builds up |
 | Gain reduction (down to 0.15) | Feedback still builds up — iOS AGC boosts mic input, compensating |
 | Alternate mic selection | Only one mic exposed by iOS (`Built-In Microphone`) |
-| `default` mode + earpiece | **Works perfectly** — no feedback, continuous real-time DAF. But too quiet to be effective. |
+| `default` mode + earpiece | **Works perfectly** — no feedback, continuous real-time DAF. But too quiet to be effective. **← current config** |
 
 ### Root cause
 
